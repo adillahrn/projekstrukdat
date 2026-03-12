@@ -2,13 +2,11 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
-#include <unordered_map>
-#include <map>
-#include <algorithm>
+#include <string>
 #include <chrono>
+#include <iomanip>
 
 using namespace std;
-using namespace chrono;
 
 struct Transaction {
     string transaction_id;
@@ -20,299 +18,164 @@ struct Transaction {
     string order_date;
 };
 
-vector<Transaction> transactions;
+/* LOAD CSV */
 
-unordered_map<string, vector<int>> customerIndex;
-unordered_map<string, vector<int>> productIndex;
+vector<Transaction> loadCSV(const string& filename) {
 
-void indexTransaction(int idx){
-    customerIndex[transactions[idx].customer_id].push_back(idx);
-    productIndex[transactions[idx].product_id].push_back(idx);
-}
-
-void loadTransactions(string filename){
-
-    auto start = high_resolution_clock::now();
+    vector<Transaction> data;
 
     ifstream file(filename);
-
-    if(!file){
-        cout<<"File tidak ditemukan\n";
-        return;
-    }
-
     string line;
-    getline(file,line);
 
-    while(getline(file,line)){
+    getline(file, line); // skip header
+
+    while (getline(file, line)) {
 
         stringstream ss(line);
+        string token;
+
         Transaction t;
 
-        string quantity;
+        getline(ss, t.transaction_id, ',');
+        getline(ss, t.customer_id, ',');
+        getline(ss, t.product_id, ',');
+        getline(ss, t.product_name, ',');
+        getline(ss, t.category, ',');
+        getline(ss, token, ',');
+        t.quantity = stoi(token);
+        getline(ss, t.order_date, ',');
 
-        getline(ss,t.transaction_id,',');
-        getline(ss,t.customer_id,',');
-        getline(ss,t.product_id,',');
-        getline(ss,t.product_name,',');
-        getline(ss,t.category,',');
-        getline(ss,quantity,',');
-        getline(ss,t.order_date,',');
-
-        t.quantity = stoi(quantity);
-
-        transactions.push_back(t);
-
-        indexTransaction(transactions.size()-1);
+        data.push_back(t);
     }
 
-    auto stop = high_resolution_clock::now();
-
-    cout<<"\nTransactions loaded : "<<transactions.size()<<endl;
-
-    cout<<"Load Time : "
-        <<duration_cast<milliseconds>(stop-start).count()
-        <<" ms\n";
+    return data;
 }
 
-void searchCustomer(string cid){
 
-    auto start = high_resolution_clock::now();
+/* BENCHMARK FUNCTION */
 
-    if(customerIndex.find(cid)==customerIndex.end()){
-        cout<<"Customer not found\n";
+void benchmark(const string& csvFile) {
+
+    vector<Transaction> transactions = loadCSV(csvFile);
+
+    int n = transactions.size();
+
+    if (n == 0) {
+        cout << "File kosong\n";
         return;
     }
 
-    cout<<"\nTransactions for customer "<<cid<<endl;
+    /* target data terakhir (worst case) */
 
-    for(int idx : customerIndex[cid]){
+    string targetId = transactions[n-1].transaction_id;
 
-        auto &t = transactions[idx];
+    Transaction updatedT = transactions[n-1];
+    updatedT.product_name = "UPDATED_PRODUCT";
 
-        cout<<t.transaction_id<<" | "
-            <<t.product_name<<" | "
-            <<t.quantity<<" | "
-            <<t.order_date<<endl;
+
+    /* INSERT */
+
+    Transaction newT;
+
+    newT.transaction_id = "TEST999";
+    newT.customer_id = "CUST999";
+    newT.product_id = "PROD999";
+    newT.product_name = "TestProduct";
+    newT.category = "Test";
+    newT.quantity = 1;
+    newT.order_date = "2026-01-01";
+
+    auto t1 = chrono::high_resolution_clock::now();
+
+    transactions.push_back(newT);
+
+    auto t2 = chrono::high_resolution_clock::now();
+
+    double insertMs =
+    chrono::duration<double, milli>(t2 - t1).count();
+
+
+    /* SEARCH */
+
+    auto t3 = chrono::high_resolution_clock::now();
+
+    for (auto it = transactions.begin(); it != transactions.end(); ++it) {
+
+        if (it->transaction_id == targetId) {
+            break;
+        }
     }
 
-    auto stop = high_resolution_clock::now();
+    auto t4 = chrono::high_resolution_clock::now();
 
-    cout<<"\nSearch Time : "
-        <<duration_cast<microseconds>(stop-start).count()
-        <<" microseconds\n";
+    double searchMs =
+    chrono::duration<double, milli>(t4 - t3).count();
+
+
+    /* UPDATE */
+
+    auto t5 = chrono::high_resolution_clock::now();
+
+    for (auto it = transactions.begin(); it != transactions.end(); ++it) {
+
+        if (it->transaction_id == targetId) {
+
+            *it = updatedT;
+            break;
+        }
+    }
+
+    auto t6 = chrono::high_resolution_clock::now();
+
+    double updateMs =
+    chrono::duration<double, milli>(t6 - t5).count();
+
+
+    /* DELETE */
+
+    auto t7 = chrono::high_resolution_clock::now();
+
+    for (auto it = transactions.begin(); it != transactions.end(); ++it) {
+
+        if (it->transaction_id == targetId) {
+
+            transactions.erase(it);
+            break;
+        }
+    }
+
+    auto t8 = chrono::high_resolution_clock::now();
+
+    double deleteMs =
+    chrono::duration<double, milli>(t8 - t7).count();
+
+
+    cout << fixed << setprecision(4);
+
+    cout << "| " << setw(12) << n
+         << " | " << setw(10) << insertMs
+         << " | " << setw(10) << searchMs
+         << " | " << setw(10) << updateMs
+         << " | " << setw(10) << deleteMs
+         << " |" << endl;
 }
 
-void searchProduct(string pid){
 
-    auto start = high_resolution_clock::now();
 
-    if(productIndex.find(pid)==productIndex.end()){
-        cout<<"Product not found\n";
-        return;
-    }
+int main() {
 
-    cout<<"\nTransactions containing product "<<pid<<endl;
+    cout << "\n=== BENCHMARK VECTOR (TRANSACTION DATASET) ===\n";
 
-    for(int idx : productIndex[pid]){
+    cout << "+--------------+------------+------------+------------+------------+\n";
+    cout << "| Jumlah Data  | Insert(ms) | Search(ms) | Update(ms) | Delete(ms) |\n";
+    cout << "+--------------+------------+------------+------------+------------+\n";
 
-        auto &t = transactions[idx];
+    benchmark("trans1000.csv");
+    benchmark("trans10000.csv");
+    benchmark("trans20000.csv");
 
-        cout<<t.transaction_id<<" | "
-            <<t.customer_id<<" | "
-            <<t.quantity<<" | "
-            <<t.order_date<<endl;
-    }
+    cout << "+--------------+------------+------------+------------+------------+\n";
 
-    auto stop = high_resolution_clock::now();
+    cout << "\nCatatan: Search, Update, Delete menggunakan transaction_id terakhir (worst case).\n";
 
-    cout<<"\nSearch Time : "
-        <<duration_cast<microseconds>(stop-start).count()
-        <<" microseconds\n";
-}
-
-void topProducts(int N){
-
-    unordered_map<string,int> freq;
-    unordered_map<string,string> name;
-
-    for(auto &t:transactions){
-
-        freq[t.product_id]+=t.quantity;
-        name[t.product_id]=t.product_name;
-    }
-
-    vector<pair<string,int>> vec(freq.begin(),freq.end());
-
-    sort(vec.begin(),vec.end(),
-    [](auto &a,auto &b){
-        return a.second>b.second;
-    });
-
-    cout<<"\nTop "<<N<<" Products\n";
-
-    for(int i=0;i<N && i<vec.size();i++){
-
-        cout<<name[vec[i].first]
-            <<" ("<<vec[i].first<<") : "
-            <<vec[i].second<<endl;
-    }
-}
-
-void frequentlyBoughtTogether(int N){
-
-    unordered_map<string,vector<string>> trxProducts;
-
-    for(auto &t:transactions){
-        trxProducts[t.transaction_id].push_back(t.product_id);
-    }
-
-    map<string,int> pairCount;
-
-    for(auto &trx:trxProducts){
-
-        auto &products = trx.second;
-
-        sort(products.begin(),products.end());
-
-        products.erase(unique(products.begin(),products.end()),products.end());
-
-        for(int i=0;i<products.size();i++){
-            for(int j=i+1;j<products.size();j++){
-
-                string key = products[i]+"|"+products[j];
-                pairCount[key]++;
-            }
-        }
-    }
-
-    vector<pair<string,int>> vec(pairCount.begin(),pairCount.end());
-
-    sort(vec.begin(),vec.end(),
-    [](auto &a,auto &b){
-        return a.second>b.second;
-    });
-
-    cout<<"\nTop "<<N<<" Frequently Bought Together\n";
-
-    for(int i=0;i<N && i<vec.size();i++){
-
-        cout<<vec[i].first
-            <<" : "
-            <<vec[i].second<<endl;
-    }
-}
-
-void insertTransaction(){
-
-    Transaction t;
-
-    cout<<"Transaction ID: ";
-    cin>>t.transaction_id;
-
-    cout<<"Customer ID: ";
-    cin>>t.customer_id;
-
-    cout<<"Product ID: ";
-    cin>>t.product_id;
-
-    cout<<"Product Name: ";
-    cin>>t.product_name;
-
-    cout<<"Category: ";
-    cin>>t.category;
-
-    cout<<"Quantity: ";
-    cin>>t.quantity;
-
-    cout<<"Date: ";
-    cin>>t.order_date;
-
-    transactions.push_back(t);
-
-    indexTransaction(transactions.size()-1);
-
-    cout<<"Transaction inserted\n";
-}
-
-void deleteTransaction(string tid){
-
-    for(int i=0;i<transactions.size();i++){
-
-        if(transactions[i].transaction_id==tid){
-
-            transactions.erase(transactions.begin()+i);
-
-            cout<<"Transaction deleted\n";
-            return;
-        }
-    }
-
-    cout<<"Transaction not found\n";
-}
-
-int main(){
-
-    loadTransactions("trans20k.csv");
-
-    int choice;
-
-    while(true){
-
-        cout<<"\n===== MENU =====\n";
-        cout<<"1 Search by Customer\n";
-        cout<<"2 Search by Product\n";
-        cout<<"3 Top Products\n";
-        cout<<"4 Frequently Bought Together\n";
-        cout<<"5 Insert Transaction\n";
-        cout<<"6 Delete Transaction\n";
-        cout<<"0 Exit\n";
-        cout<<"Choice : ";
-
-        cin>>choice;
-
-        if(choice==0) break;
-
-        if(choice==1){
-
-            string cid;
-            cout<<"Customer ID : ";
-            cin>>cid;
-
-            searchCustomer(cid);
-        }
-
-        else if(choice==2){
-
-            string pid;
-            cout<<"Product ID : ";
-            cin>>pid;
-
-            searchProduct(pid);
-        }
-
-        else if(choice==3){
-
-            topProducts(5);
-        }
-
-        else if(choice==4){
-
-            frequentlyBoughtTogether(10);
-        }
-
-        else if(choice==5){
-
-            insertTransaction();
-        }
-
-        else if(choice==6){
-
-            string tid;
-            cout<<"Transaction ID : ";
-            cin>>tid;
-
-            deleteTransaction(tid);
-        }
-    }
 }
