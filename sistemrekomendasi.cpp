@@ -236,7 +236,7 @@ int main(){
 
     start = chrono::high_resolution_clock::now();
 
-    searchByCustomer("7318");
+    searchByCustomer("9974");
 
     stop = chrono::high_resolution_clock::now();
 
